@@ -21,12 +21,13 @@ limitations under the License.
 import subprocess
 
 import benchexec.util as util
+import benchexec.result as result
 import benchexec.tools.template
 
 class Tool(benchexec.tools.template.BaseTool):
 
     def executable(self):
-        return util.find_executable('verifier.native')
+        return util.find_executable('vplc.rb')
 
 
     def version(self, executable):
@@ -46,7 +47,7 @@ class Tool(benchexec.tools.template.BaseTool):
 
 
     def name(self):
-        return 'vplc'
+        return 'vplc with c frontend'
 
 
     def cmdline(self, executable, options, tasks, propertyfile=None, rlimits={}):
@@ -81,22 +82,58 @@ class Tool(benchexec.tools.template.BaseTool):
         and should give some indication of the failure reason
         (e.g., "CRASH", "OUT_OF_MEMORY", etc.).
         """
-        output = '\n'.join(output)
-        if returnsignal == 9 or returnsignal == (128+9):
-            if isTimeout:
-                status = "TIMEOUT"
-            else:
-                status = "KILLED BY SIGNAL 9"
-        elif "At least one assertion is violated." in output:
-            status = "UNSAFE"
-        elif "All assertions hold." in output:
-            status = "SAFE"
-        elif "Out of memory." in output:
-            status = "ERROR (Out of memory)"
-        else:
-            status = "FAILURE"
-        return status
+        def isOutOfNativeMemory(line):
+            return ('std::bad_alloc' in line        # C++ out of memory exception (MathSAT)
+                    or 'Cannot allocate memory'     in line
+                    or 'Native memory allocation (malloc) failed to allocate' in line # JNI
+                    or line.startswith('out of memory')     # CuDD
+                    or line.startswith('Out of memory.')    # OCaml 
+                )
 
+        if returnsignal == 0 and returncode > 128:
+            # shells sets return code to 128+signal when a signal is received
+            returnsignal = returncode - 128
+
+        if returnsignal != 0:
+            if returnsignal == 6:
+                status = 'ABORTED'
+            elif ((returnsignal == 9) or (returnsignal == 15)) and isTimeout:
+                status = 'TIMEOUT'
+            elif returnsignal == 11:
+                status = 'SEGMENTATION FAULT'
+            elif returnsignal == 15:
+                status = 'KILLED'
+            else:
+                status = 'KILLED BY SIGNAL '+str(returnsignal)
+
+        elif returncode != 0:
+            status = 'ERROR ({0})'.format(returncode)
+
+        else:
+            status = ''
+
+        for line in output:
+            if isOutOfNativeMemory(line):
+                status = 'OUT OF NATIVE MEMORY'
+            elif (('SIGSEGV' in line) or ('Segmentation fault' in line)):
+                status = 'SEGMENTATION FAULT'
+            elif line.startswith('Error: ') and not status:
+                status = 'ERROR'
+            elif 'Solver timed out during a query.' in line:
+                status = 'SOLVER TIMEOUT'
+            elif 'Aborted due to unknown reason.' in line:
+                status = 'ERROR'
+            elif line.startswith('All assertions hold'):
+                status = result.RESULT_TRUE_PROP
+            elif line.startswith('At least one assertion is violated.'):
+                status = result.RESULT_FALSE_REACH
+            elif line.startswith('No verification result could be determined.'):
+                status = result.RESULT_UNKNOWN
+
+        if not status:
+            status = result.RESULT_UNKNOWN
+        return status
+    
     
     def get_value_from_output(self, lines, identifier):
         """
@@ -106,6 +143,15 @@ class Tool(benchexec.tools.template.BaseTool):
         @param lines The output of the tool as list of lines.
         @param identifier The user-specified identifier for the statistic item.
         """
+        for line in lines:
+            if identifier in line:
+                startPosition = line.find(':') + 1
+                endPosition = line.find('(', startPosition) # bracket maybe not found -> (-1)
+                if (endPosition == -1):
+                    return line[startPosition:].strip()
+                else:
+                    return line[startPosition: endPosition].strip()
+        return None
 
 
     def program_files(self, executable):
