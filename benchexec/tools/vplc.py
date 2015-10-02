@@ -125,7 +125,15 @@ class Tool(benchexec.tools.template.BaseTool):
                 status = 'ERROR'
             elif line.startswith('All assertions hold'):
                 status = result.RESULT_TRUE_PROP
+            elif line.startswith('Verification result: TRUE'):
+                status = result.RESULT_TRUE_PROP
             elif line.startswith('At least one assertion is violated.'):
+                status = result.RESULT_FALSE_REACH
+            elif line.startswith('VERIFICATION SUCCESSFUL'):
+                status = result.RESULT_TRUE_PROP
+            elif line.startswith('VERIFICATION FAILED'):
+                status = result.RESULT_FALSE_REACH
+            elif line.startswith('Verification result: FALSE'):
                 status = result.RESULT_FALSE_REACH
             elif line.startswith('No verification result could be determined.'):
                 status = result.RESULT_UNKNOWN
