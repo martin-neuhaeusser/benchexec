@@ -123,7 +123,7 @@ class Tool(benchexec.tools.template.BaseTool):
                 status = 'SOLVER TIMEOUT'
             elif 'Aborted due to unknown reason.' in line:
                 status = 'ERROR'
-            elif line.startswith('All assertions hold'):
+            elif line.startswith('All assertions hold.'):
                 status = result.RESULT_TRUE_PROP
             elif line.startswith('Verification result: TRUE'):
                 status = result.RESULT_TRUE_PROP
@@ -136,6 +136,8 @@ class Tool(benchexec.tools.template.BaseTool):
             elif line.startswith('Verification result: FALSE'):
                 status = result.RESULT_FALSE_REACH
             elif line.startswith('No verification result could be determined.'):
+                status = result.RESULT_UNKNOWN
+            elif line.startswith('All assertions hold up to bound'):
                 status = result.RESULT_UNKNOWN
 
         if not status:
