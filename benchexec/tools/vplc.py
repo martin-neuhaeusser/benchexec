@@ -29,48 +29,8 @@ class Tool(benchexec.tools.template.BaseTool):
     def executable(self):
         return util.find_executable('vplc.rb')
 
-
-    def version(self, executable):
-        """
-        Determine a version string for this tool, if available.
-        """
-        return ''
-
-    def _version_from_tool(self, executable, arg='--version'):
-        """
-        Get version of a tool by executing it with argument "--version"
-        and returning stdout.
-        """
-        stdout = subprocess.Popen([executable, arg],
-                                  stdout=subprocess.PIPE).communicate()[0]
-        return util.decode_to_string(stdout).strip()
-
-
     def name(self):
         return 'vplc with c frontend'
-
-
-    def cmdline(self, executable, options, tasks, propertyfile=None, rlimits={}):
-        """
-        Compose the command line to execute from the name of the executable,
-        the user-specified options, and the inputfile to analyze.
-        This method can get overridden, if, for example, some options should
-        be enabled or if the order of arguments must be changed.
-
-        All paths passed to this method (executable, tasks, and propertyfile)
-        are either absolute or have been made relative to the designated working directory.
-
-        @param executable: the path to the executable of the tool (typically the result of executable())
-        @param options: a list of options, in the same order as given in the XML-file.
-        @param tasks: a list of tasks, that should be analysed with the tool in one run.
-                            In most cases we we have only _one_ inputfile.
-        @param propertyfile: contains a specification for the verifier.
-        @param rlimits: This dictionary contains resource-limits for a run,
-                        for example: time-limit, soft-time-limit, hard-time-limit, memory-limit, cpu-core-limit.
-                        All entries in rlimits are optional, so check for existence before usage!
-        """
-        return [executable] + options + tasks
-
 
     def determine_result(self, returncode, returnsignal, output, isTimeout):
         """
@@ -91,20 +51,23 @@ class Tool(benchexec.tools.template.BaseTool):
                 )
 
         if returnsignal == 0 and returncode > 128:
-            # shells sets return code to 128+signal when a signal is received
+            # shells set their return code to (128 + signal) when a signal is received
+            # during execution of the shell
             returnsignal = returncode - 128
 
         if returnsignal != 0:
-            if returnsignal == 6:
-                status = 'ABORTED'
-            elif ((returnsignal == 9) or (returnsignal == 15)) and isTimeout:
+            if isTimeout:
                 status = 'TIMEOUT'
+            elif returnsignal == 6:
+                status = 'SIGABRT'
+            elif returnsignal == 9:
+                status = 'SIGKILL'
             elif returnsignal == 11:
-                status = 'SEGMENTATION FAULT'
+                status = 'SIGSEGV'
             elif returnsignal == 15:
-                status = 'KILLED'
+                status = 'SIGTERM'
             else:
-                status = 'KILLED BY SIGNAL '+str(returnsignal)
+                status = 'KILLED BY SIGNAL ' + str(returnsignal)
 
         elif returncode != 0:
             status = 'ERROR ({0})'.format(returncode)
@@ -163,39 +126,3 @@ class Tool(benchexec.tools.template.BaseTool):
                     return line[startPosition: endPosition].strip()
         return None
 
-
-    def program_files(self, executable):
-        """
-        OPTIONAL, this method is only necessary for situations when the benchmark environment
-        needs to know all files belonging to a tool
-        (to transport them to a cloud service, for example).
-        Returns a list of files or directories that are necessary to run the tool.
-        """
-        return [executable]
-
-
-    def working_directory(self, executable):
-        """
-        OPTIONAL, this method is only necessary for situations
-        when the tool needs a separate working directory.
-        """
-        return "."
-
-
-    def environment(self, executable):
-        """
-        OPTIONAL, this method is only necessary for tools
-        that needs special environment variable.
-        Returns a map, that contains identifiers for several submaps.
-        All keys and values have to be Strings!
-        
-        Currently we support 2 identifiers:
-        
-        "newEnv": Before the execution, the values are assigned to the real environment-identifiers.
-                  This will override existing values.
-        "additionalEnv": Before the execution, the values are appended to the real environment-identifiers.
-                  The seperator for the appending must be given in this method,
-                  so that the operation "realValue + additionalValue" is a valid value.
-                  For example in the PATH-variable the additionalValue starts with a ":".
-        """
-        return {}
