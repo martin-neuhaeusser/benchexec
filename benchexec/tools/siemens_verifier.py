@@ -55,6 +55,8 @@ class Tool(benchexec.tools.template.BaseTool):
             # during execution of the shell
             returnsignal = returncode - 128
 
+        status = ''
+
         if returnsignal != 0:
             if isTimeout:
                 status = 'TIMEOUT'
@@ -69,39 +71,43 @@ class Tool(benchexec.tools.template.BaseTool):
             else:
                 status = 'KILLED BY SIGNAL ' + str(returnsignal)
 
-        elif returncode != 0:
-            status = 'ERROR ({0})'.format(returncode)
-
         else:
-            status = ''
+            for line in output:
+                if isOutOfNativeMemory(line):
+                    status = 'OUT OF NATIVE MEMORY'
+                elif (('SIGSEGV' in line) or ('Segmentation fault' in line)) and not status:
+                    status = 'SEGMENTATION FAULT'
+                elif ('SIGTERM' in line) and not status:
+                    status = 'SIGTERM'
+                elif ('SIGKILL' in line) and not status:
+                    status = 'SIGKILL'
+                elif ('SIGABRT' in line) and not status:
+                    status = 'SIGABRT'
+                elif line.startswith('Error: ') and not status:
+                    status = 'ERROR'
+                elif 'Solver timed out during a query.' in line:
+                    status = 'SOLVER TIMEOUT'
+                elif 'Aborted due to unknown reason.' in line:
+                    status = 'ERROR'
+                elif line.startswith('All assertions hold.'):
+                    status = result.RESULT_TRUE_PROP
+                elif line.startswith('Verification result: TRUE'):
+                    status = result.RESULT_TRUE_PROP
+                elif line.startswith('At least one assertion is violated.'):
+                    status = result.RESULT_FALSE_REACH
+                elif line.startswith('VERIFICATION SUCCESSFUL'):
+                    status = result.RESULT_TRUE_PROP
+                elif line.startswith('VERIFICATION FAILED'):
+                    status = result.RESULT_FALSE_REACH
+                elif line.startswith('Verification result: FALSE'):
+                    status = result.RESULT_FALSE_REACH
+                elif line.startswith('No verification result could be determined.'):
+                    status = result.RESULT_UNKNOWN
+                elif line.startswith('All assertions hold up to bound'):
+                    status = result.RESULT_UNKNOWN
 
-        for line in output:
-            if isOutOfNativeMemory(line):
-                status = 'OUT OF NATIVE MEMORY'
-            elif (('SIGSEGV' in line) or ('Segmentation fault' in line)):
-                status = 'SEGMENTATION FAULT'
-            elif line.startswith('Error: ') and not status:
-                status = 'ERROR'
-            elif 'Solver timed out during a query.' in line:
-                status = 'SOLVER TIMEOUT'
-            elif 'Aborted due to unknown reason.' in line:
-                status = 'ERROR'
-            elif line.startswith('All assertions hold.'):
-                status = result.RESULT_TRUE_PROP
-            elif line.startswith('Verification result: TRUE'):
-                status = result.RESULT_TRUE_PROP
-            elif line.startswith('At least one assertion is violated.'):
-                status = result.RESULT_FALSE_REACH
-            elif line.startswith('VERIFICATION SUCCESSFUL'):
-                status = result.RESULT_TRUE_PROP
-            elif line.startswith('VERIFICATION FAILED'):
-                status = result.RESULT_FALSE_REACH
-            elif line.startswith('Verification result: FALSE'):
-                status = result.RESULT_FALSE_REACH
-            elif line.startswith('No verification result could be determined.'):
-                status = result.RESULT_UNKNOWN
-            elif line.startswith('All assertions hold up to bound'):
-                status = result.RESULT_UNKNOWN
+            if (returncode != 0) and not status:
+                status = 'ERROR ({0})'.format(returncode)
 
         if not status:
             status = result.RESULT_UNKNOWN
